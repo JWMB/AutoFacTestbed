@@ -16,12 +16,20 @@ namespace AutoRegister
             cache.Add(typeName, found);
             return found;
         }
+
         public static void RegisterAssemblies(params Assembly[] assemblies)
         {
             foreach (var item in cache.Where(o => o.Value == null).ToList())
                 cache.Remove(item.Key);
             var nonregistered = assemblies.Except(registeredAssemblies);
             registeredAssemblies.AddRange(nonregistered);
+        }
+
+        public static void RegisterType(Type type, string? optionalName = null)
+        {
+            var name = optionalName ?? type.Name;
+            cache.Remove(name);
+            cache.Add(name, type);
         }
     }
 }

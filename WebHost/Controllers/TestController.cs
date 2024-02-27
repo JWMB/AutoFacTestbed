@@ -1,6 +1,7 @@
 using Autofac;
 using AutoRegister;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using WebHost.Services;
 
 namespace WebHost.Controllers
@@ -9,43 +10,79 @@ namespace WebHost.Controllers
     [Route("[controller]")]
     public partial class TestController : ControllerBase
     {
-        private readonly ILogger<TestController> _logger;
+        private readonly IScopeActivator scopeActivator;
 
-        public TestController(ILogger<TestController> logger)
+        public TestController(IScopeActivator scopeActivator)
         {
-            _logger = logger;
+            this.scopeActivator = scopeActivator;
         }
 
         [HttpPost]
         [AutoRegisterRequestContent]
-        public async Task<object> Post(ConfigDto dto)
+        public async Task<string> Simple(SimpleDto dto)
         {
-            using var leafSP = ScopeActivator.CreateScopes(HttpContext, new Action<IServiceProvider, ContainerBuilder>[]
+            using var serviceProvider = scopeActivator.CreateScopesX(HttpContext, new Action<IServiceProvider, ISimpleServiceCollection>[]
+            {
+                (sp, b) => AutoRegisterUtils.RegisterServiceConfigTargetsX(dto, sp, b),
+            });
+            var chatHistoryAnalysis = serviceProvider.GetRequiredService<IChatHistoryAnalysis>();
+
+            return $"{await chatHistoryAnalysis.Analyze("some text")}";
+        }
+        public class SimpleDto
+        {
+            public ServiceConfig<IChatHistoryAnalysis>? Plugin { get; set; }
+        }
+
+
+        [HttpPost]
+        [AutoRegisterRequestContent]
+        public async Task<string> Duplicates(DuplicatesDto dto)
+        {
+            using var serviceProvider = scopeActivator.CreateScopesX(HttpContext, new Action<IServiceProvider, ISimpleServiceCollection>[]
+            {
+                (sp, b) => AutoRegisterUtils.RegisterServiceConfigTargetsX(dto, sp, b),
+            });
+            var a = serviceProvider.GetRequiredKeyedService<IChatHistoryAnalysis>(nameof(dto.PluginA));
+            var b = serviceProvider.GetRequiredKeyedService<IChatHistoryAnalysis>(nameof(dto.PluginB));
+
+            return $"{await a.Analyze("some text")} / {await b.Analyze("some text")}";
+        }
+
+        public class DuplicatesDto
+        {
+            public ServiceConfig<IChatHistoryAnalysis>? PluginA { get; set; }
+            public ServiceConfig<IChatHistoryAnalysis>? PluginB { get; set; }
+        }
+        //public class ServiceXA
+        //{
+        //    public ServiceXA([FromKeyedServices("A")] ICompletionService completionService)
+        //    {
+        //    }
+        //}
+        //public class ServiceXB
+        //{
+        //    public ServiceXB([FromKeyedServices("B")] ICompletionService completionService)
+        //    {
+        //    }
+        //}
+
+
+        [HttpPost]
+        [AutoRegisterRequestContent]
+        public async Task<object> CreatePrompt(PromptDto dto)
+        {
+            using var serviceProvider = scopeActivator.CreateScopes(HttpContext, new Action<IServiceProvider, ContainerBuilder>[]
             {
                 (sp, b) => b.Register(ctx => new DeploymentGroup("Azure")),
                 (sp, b) => AutoRegisterUtils.RegisterServiceConfigTargets(dto, sp, b),
             });
-            var promptBuilder = leafSP.GetService<DefaultPromptBuilder>();
+            var promptBuilder = serviceProvider.GetRequiredService<DefaultPromptBuilder>();
 
-            //var promptBuilder = ScopeActivator.CreateOnNewScope<DefaultPromptBuilder>(HttpContext, (sp, builder) => {
-            //    AutoRegisterUtils.RegisterServiceConfigTargets(dto, serviceProvider, builder);
-            //});
-            return $"promptBuilder={promptBuilder}\nPrompt={(promptBuilder == null ? "N/A" : await promptBuilder.GetPrompt("hello"))}";
+            return $"promptBuilder={promptBuilder}\nPrompt={await promptBuilder.GetPrompt("hello")}";
         }
 
-        public class DefaultPromptBuilder(IServiceA serviceA, SessionId sessionId, IChatHistoryAnalysis chatHistoryPlugin, ICompletionService completionService)
-        {
-            public override string ToString()
-            {
-                return $"ServiceA:{serviceA}, sessionId:{sessionId} chatHistoryPlugin:{chatHistoryPlugin} completionService:{completionService}";
-            }
-            public async Task<string> GetPrompt(string userInput)
-            {
-                return $"{await completionService.GetChatCompletions(userInput, new CompletionSettings(200))}";
-            }
-        }
-
-        public class ConfigDto
+        public class PromptDto
         {
             [RegisterOnRequestContext]
             public SessionId? SessionId { get; set; }
@@ -66,70 +103,6 @@ namespace WebHost.Controllers
     }
 }
 """;
-
-        }
-    }
-
-
-    public interface ICompletionService
-    {
-        Task<string> GetChatCompletions(string prompt, CompletionSettings settings);
-    }
-    public class CompletionService : ICompletionService
-    {
-        private readonly Config config;
-        private readonly IDeploymentProvider deploymentProvider;
-        private readonly ITokenCountEstimator tokenCountEstimator;
-
-        public record Config(string ModelSelector)
-        {
-        }
-
-        public CompletionService([ServiceConfigParameter] Config config, IDeploymentProvider deploymentProvider, ITokenCountEstimator tokenCountEstimator)
-        {
-            this.config = config;
-            this.deploymentProvider = deploymentProvider;
-            this.tokenCountEstimator = tokenCountEstimator;
-        }
-
-        public Task<string> GetChatCompletions(string prompt, CompletionSettings settings)
-        {
-            var deployment = deploymentProvider.GetDeployment(config.ModelSelector, tokenCountEstimator.Count(prompt) + settings.MaxTokens);
-            return Task.FromResult($"deployment={deployment} prompt={prompt}");
-        }
-    }
-
-    public record CompletionSettings(int MaxTokens);
-    public interface ITokenCountEstimator
-    {
-        int Count(string text);
-    }
-    public class TokenCountEstimator : ITokenCountEstimator
-    {
-        public int Count(string text) => text.Length;
-    }
-    public interface IDeploymentProvider
-    {
-        string GetDeployment(string modelSelector, int minContextSize);
-    }
-
-    public class DeploymentGroup : PrimitiveWrapperBase<string>
-    {
-        public DeploymentGroup(string id) : base(id) { }
-    }
-
-    public class DeploymentProvider : IDeploymentProvider
-    {
-        private readonly DeploymentGroup deploymentGroup;
-
-        public DeploymentProvider(DeploymentGroup deploymentGroup)
-        {
-            this.deploymentGroup = deploymentGroup;
-        }
-
-        public string GetDeployment(string modelSelector, int minContextSize)
-        {
-            return $"{deploymentGroup}";
         }
     }
 }

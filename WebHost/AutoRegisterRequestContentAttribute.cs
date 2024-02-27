@@ -14,24 +14,30 @@ namespace WebHost
         {
             if (context.HttpContext.Request.Method == HttpMethods.Post)
             {
-                var serviceProvidersFeature = GetServiceProvidersFeature(context.HttpContext);
-                if (serviceProvidersFeature == null)
-                    return;
-
-                var serviceProvider = serviceProvidersFeature.RequestServices;
-                if (serviceProvider is AutofacServiceProvider asp)
-                {
-                    //suggestion in https://stackoverflow.com/a/38881836 isn't valid (asp.LifetimeScope.ComponentRegistry.Register)
-
-                    // TODO: childScope disposal?
-                    // TODO: only for the body? context.ActionDescriptor.EndpointMetadata / Properties / MethodInfo
-                    var childScope = CreateScope(asp, context.ActionArguments);
-                    serviceProvidersFeature.RequestServices = new AutofacServiceProvider(childScope);
-                }
+                UpdateRequestScope(context.HttpContext, context.ActionArguments);
             }
         }
 
-        public ILifetimeScope CreateScope(AutofacServiceProvider asp, IDictionary<string, object?> actionArguments)
+        public static void UpdateRequestScope(HttpContext context, IDictionary<string, object?> actionArguments)
+        {
+            var serviceProvidersFeature = GetServiceProvidersFeature(context);
+            if (serviceProvidersFeature == null)
+                return;
+
+            var serviceProvider = serviceProvidersFeature.RequestServices;
+            if (serviceProvider is AutofacServiceProvider asp)
+            {
+                //suggestion in https://stackoverflow.com/a/38881836 isn't valid (asp.LifetimeScope.ComponentRegistry.Register)
+
+                // TODO: childScope disposal?
+                // TODO: only for the body? context.ActionDescriptor.EndpointMetadata / Properties / MethodInfo
+                var childScope = CreateScope(asp, actionArguments);
+                serviceProvidersFeature.RequestServices = new AutofacServiceProvider(childScope);
+            }
+
+        }
+
+        private static ILifetimeScope CreateScope(AutofacServiceProvider asp, IDictionary<string, object?> actionArguments)
         {
             return asp.LifetimeScope.BeginLifetimeScope(builder =>
             {
@@ -47,10 +53,11 @@ namespace WebHost
 
         public static IServiceProvidersFeature? GetServiceProvidersFeature(HttpContext context)
         {
-            return context.Features
-                .Select(o => o.Value)
-                .OfType<IServiceProvidersFeature>()
-                .FirstOrDefault();
+            return context.Features.Get<IServiceProvidersFeature>();
+            //return context.Features
+            //    .Select(o => o.Value)
+            //    .OfType<IServiceProvidersFeature>()
+            //    .FirstOrDefault();
         }
     }
 }

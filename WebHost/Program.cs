@@ -1,7 +1,6 @@
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using AutoRegister;
-using WebHost.Controllers;
 using WebHost.Services;
 using static WebHost.Controllers.TestController;
 

@@ -41,11 +41,11 @@ namespace AutoRegister
             return configType == null ? null : ToObject(configType);
         }
 
-        public TConfig? GetTypedConfig<TConfig>() where TConfig : class
-        {
-            var config = GetConfig();
-            return config == null ? null : (TConfig)config;
-        }
+        //public TConfig? GetTypedConfig<TConfig>() where TConfig : class
+        //{
+        //    var config = GetConfig();
+        //    return config == null ? null : (TConfig)config;
+        //}
 
         //public object? GetInstance(IServiceProvider? serviceProvider)
         //{

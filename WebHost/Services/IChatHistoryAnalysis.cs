@@ -2,7 +2,11 @@
 
 namespace WebHost.Services
 {
-    public interface IChatHistoryAnalysis { }
+    public interface IChatHistoryAnalysis
+    {
+        Task<string> Analyze(string text);
+    }
+
     public class ChatHistoryAnalysis : IChatHistoryAnalysis
     {
         private readonly Config config;
@@ -18,5 +22,10 @@ namespace WebHost.Services
         }
 
         public override string ToString() => config.Value;
+
+        public Task<string> Analyze(string text)
+        {
+            return Task.FromResult($"analyzed: {text} with {config.Value}");
+        }
     }
 }

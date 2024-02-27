@@ -3,6 +3,7 @@
     public interface IServiceA
     {
     }
+
     public class ServiceA : IServiceA
     {
         private readonly SessionId sessionId;
